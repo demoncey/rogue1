@@ -1,7 +1,7 @@
 #include <SoftwareSerial.h>
 #include <Wire.h> 
 #include <LiquidCrystal_I2C.h>
-
+#include <DHT.h>
 //lcd i2c
 LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);  
 //bluetooth
@@ -16,6 +16,11 @@ char stateB="3";
 char old_stateB="3";
 int counter=1;
 
+//sensor
+#define DHTPIN 2          
+#define DHTTYPE DHT11     
+DHT dht(DHTPIN, DHTTYPE);
+
 
 
 
@@ -27,16 +32,19 @@ void setup() {
   initInfo();
   Serial.println("rogue 1 connected!");
   bluetooth.begin(38400);
+  //start sensor
+  dht.begin(); 
   //motor conf
   pinMode(in3, OUTPUT);
   pinMode(in4, OUTPUT);
   delay(1000);
+  lcd.clear();
 }
 
 void loop() {
   //reciveCmd();
-  reciveBlueCmd();
-  Serial.println(stateB);
+  reciveMsg();
+  displaySensor();
   if(stateB =='1'){
     goForwardB();
   }else if(stateB =='2'){
@@ -52,16 +60,20 @@ void loop() {
 void reciveCmd(){
   if(Serial.available()>0){
     Serial.println("data received");
-    old_stateB=stateB;
     stateB=Serial.read(); 
   } 
 }
 
-void reciveBlueCmd(){
+void reciveMsg(){
   if(bluetooth.available()>0){
-    //bluetooth.println("data received");
     stateB=bluetooth.read(); 
   } 
+}
+
+
+void sendMsg(String msg){
+  bluetooth.println(msg);
+  Serial.println(msg);
 }
 
 void silentStopB(){
@@ -109,9 +121,6 @@ void goBackwardB(){
   old_stateB=stateB;
   }
 
-
-//------------------------------------------------------------------------------------------------------
-
 void initInfo(){
   //i2c implementation
   lcd.home();   
@@ -129,19 +138,50 @@ void initInfo(){
   lcd.setCursor(0,1);
   lcd.print("Initialized");
 }
+
+
 void displayMsg(char * msg){
   lcd.clear();
+  lcd.setCursor(0,0);
   lcd.setCursor(0,1);
   lcd.print(msg);
-  bluetooth.println(msg);
-  Serial.println(msg);
+  sendMsg(String(msg));
 }
+
+
+
+
 void heartbeatMsg(int &counter){
   if( counter%60 == 0 ){
-    displayMsg("is working");
+    displayMsg("Status: OK");
+    float t = dht.readTemperature();  
+    float h = dht.readHumidity(); 
+    if (isnan(t) || isnan(h)){
+      displayMsg("sensor not working");
+    }else{
+      sendMsg("Temp: "+String(t)+" *C");
+      sendMsg("Hum: "+String(t)+" %");
+    }
     counter=1;
   }else{
     counter++;
+  }
+}
+
+void displaySensor(){
+  float t = dht.readTemperature();  
+  float h = dht.readHumidity(); 
+  if (isnan(t) || isnan(h)){
+    lcd.print("is none");
+  }else{
+     lcd.setCursor(0,0);
+     lcd.print(t);
+     lcd.setCursor(6,0);
+     lcd.print("*C");
+     lcd.setCursor(9,0);
+     lcd.print(h);
+     lcd.setCursor(15,0);
+     lcd.print("%");
   }
 }
 
