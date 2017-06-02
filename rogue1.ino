@@ -4,6 +4,7 @@
 #include <DHT.h>
 //lcd i2c
 LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);  
+#define CLEAR_ROW "                "
 //bluetooth
 #define TX 12 //11 nano   
 #define RX 13 //12 nano
@@ -16,11 +17,24 @@ char stateB="3";
 char old_stateB="3";
 int counter=1;
 
-//sensor
+//sensor DHT11
 #define DHTPIN 2          
 #define DHTTYPE DHT11     
 DHT dht(DHTPIN, DHTTYPE);
 
+//ultra sonic sensor HC-SR04
+
+#define TRIG 11
+#define ECHO 10
+
+
+struct measurment
+{
+   float temp;
+   int hum;
+   int distance;
+};
+typedef struct measurment Measurment;
 
 
 
@@ -37,14 +51,20 @@ void setup() {
   //motor conf
   pinMode(in3, OUTPUT);
   pinMode(in4, OUTPUT);
+  //sonar
+  pinMode(TRIG, OUTPUT); //Pin, do którego podłączymy trig jako wyjście
+  pinMode(ECHO, INPUT); //a echo, jako wejście
   delay(1000);
   lcd.clear();
 }
 
 void loop() {
+  Measurment ms;
   //reciveCmd();
   reciveMsg();
-  displaySensor();
+  getMeasurments(ms);
+  checkStop(&ms);
+  displayMeasurments(&ms);
   if(stateB =='1'){
     goForwardB();
   }else if(stateB =='2'){
@@ -52,10 +72,41 @@ void loop() {
   }else if(stateB =='3'){
     stopB();
   }
-  heartbeatMsg(counter);
+  heartbeatMsg(counter,ms);
   delay(500);
 }
 
+void getMeasurments(Measurment &ms){
+  float t = dht.readTemperature();  
+  float h = dht.readHumidity(); 
+  if (isnan(t) || isnan(h)){
+    lcd.print("is none");
+  }
+  ms.temp=t;
+  ms.hum=h;
+  ms.distance=calcDistance();
+}
+
+
+int calcDistance(){
+  long t , distance;
+  digitalWrite(TRIG, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG, LOW);
+  t = pulseIn(ECHO, HIGH);
+  distance = t / 58;
+  return distance;
+}
+
+void checkStop(Measurment *ms){
+  if(ms->distance<10){
+    stateB='3';
+    //displayMsg(String(ms->distance)+" cm",false);
+  }
+  
+}
 
 void reciveCmd(){
   if(Serial.available()>0){
@@ -66,6 +117,7 @@ void reciveCmd(){
 
 void reciveMsg(){
   if(bluetooth.available()>0){
+    Serial.println("data received");
     stateB=bluetooth.read(); 
   } 
 }
@@ -141,48 +193,56 @@ void initInfo(){
 
 
 void displayMsg(char * msg){
-  lcd.clear();
-  lcd.setCursor(0,0);
+  lcd.setCursor(0,1);
+  lcd.print(CLEAR_ROW);
   lcd.setCursor(0,1);
   lcd.print(msg);
   sendMsg(String(msg));
 }
 
+void displayMsg(String msg){
+  lcd.setCursor(0,1);
+  lcd.print(CLEAR_ROW);
+  lcd.setCursor(0,1);
+  lcd.print(msg);
+  sendMsg(msg);
+}
+
+void displayMsg(String msg ,boolean send){
+  lcd.setCursor(0,1);
+  lcd.print(CLEAR_ROW);
+  lcd.setCursor(0,1);
+  lcd.print(msg);
+  if(send)
+    sendMsg(msg);
+}
 
 
-
-void heartbeatMsg(int &counter){
+void heartbeatMsg(int &counter,Measurment &ms){
   if( counter%60 == 0 ){
     displayMsg("Status: OK");
-    float t = dht.readTemperature();  
-    float h = dht.readHumidity(); 
-    if (isnan(t) || isnan(h)){
-      displayMsg("sensor not working");
-    }else{
-      sendMsg("Temp: "+String(t)+" *C");
-      sendMsg("Hum: "+String(t)+" %");
-    }
+    sendMsg("Temp: "+String(ms.temp)+" *C");
+    sendMsg("Hum: "+String(ms.hum)+" %");
+    sendMsg("Distance: "+String(ms.distance)+" cm");
     counter=1;
   }else{
     counter++;
   }
 }
 
-void displaySensor(){
-  float t = dht.readTemperature();  
-  float h = dht.readHumidity(); 
-  if (isnan(t) || isnan(h)){
-    lcd.print("is none");
-  }else{
-     lcd.setCursor(0,0);
-     lcd.print(t);
-     lcd.setCursor(6,0);
-     lcd.print("*C");
-     lcd.setCursor(9,0);
-     lcd.print(h);
-     lcd.setCursor(15,0);
-     lcd.print("%");
-  }
+void displayMeasurments(Measurment *ms){
+  lcd.setCursor(0,0);
+  lcd.print(ms->temp);
+  lcd.setCursor(5,0);
+  lcd.print("C");
+  lcd.setCursor(7,0);
+  lcd.print(ms->hum);
+  lcd.setCursor(9,0);
+  lcd.print("%");
+  lcd.setCursor(11,0);
+  lcd.print(ms->distance);
+  lcd.setCursor(14,0);
+  lcd.print("cm");
 }
 
 
